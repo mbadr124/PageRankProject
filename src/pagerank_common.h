@@ -8,50 +8,46 @@
 #include <vector>
 #include <mpi.h>
 
-// ============================================================
-// CONFIGURATION
-// ============================================================
-constexpr int NUM_NODES = 8;        // Number of nodes in the graph
-constexpr int MAX_ITERATIONS = 50000; // Maximum number of iterations
-constexpr double CONVERGENCE = 1e-6;  // Convergence threshold
-constexpr double DAMPING = 0.85;      // Damping factor
+using namespace std;
 
-// ============================================================
+// CONFIGURATION
+constexpr int MAX_ITERATIONS = 50000;  // Maximum number of iterations
+constexpr double CONVERGENCE = 1e-6;   // Convergence threshold
+constexpr double DAMPING = 0.85;       // Damping factor
+constexpr const char* GRAPH_FILE = "data/graph_2k_edges.txt";
+
 // CSR Graph Structure
-// ============================================================
 struct CSRGraph {
     int n;                          // Number of nodes
-    std::vector<int> row_ptr;       // row_ptr[i]..row_ptr[i+1]-1 = outgoing neighbors of node i
-    std::vector<int> col_idx;       // Destination node indices
-    std::vector<int> out_degree;    // Out-degree of each node
+    vector<int> row_ptr;       // row_ptr[i]..row_ptr[i+1]-1 = outgoing neighbors of node i
+    vector<int> col_idx;       // Destination node indices
+    vector<int> out_degree;    // Out-degree of each node
 };
 
-// ------------------------------------------------------------
 // Common graph helpers
-// ------------------------------------------------------------
-inline CSRGraph loadGraphFromEdgeList(const std::string& filename) {
-    std::ifstream file(filename);
+inline CSRGraph loadGraphFromEdgeList(const string& filename) {
+    ifstream file(filename);
     if (!file) {
-        throw std::runtime_error("Could not open graph file: " + filename);
+        throw runtime_error("Could not open graph file: " + filename);
     }
 
     int n = 0;
     int m = 0;
     file >> n >> m;
     if (!file || n <= 0 || m < 0) {
-        throw std::runtime_error("Invalid graph header in: " + filename);
+        throw runtime_error("Invalid graph header in: " + filename);
     }
 
-    std::vector<std::vector<int>> adj(n);
+    vector<vector<int>> adj(n);
     for (int edge = 0; edge < m; edge++) {
         int src = 0;
         int dst = 0;
         file >> src >> dst;
         if (!file) {
-            throw std::runtime_error("Invalid edge list data in: " + filename);
+            throw runtime_error("Invalid edge list data in: " + filename);
         }
         if (src < 0 || src >= n || dst < 0 || dst >= n) {
-            throw std::runtime_error("Graph edge has a node outside the valid range in: " + filename);
+            throw runtime_error("Graph edge has a node outside the valid range in: " + filename);
         }
         adj[src].push_back(dst);
     }
@@ -87,7 +83,7 @@ inline CSRGraph buildInCSR(const CSRGraph& g) {
     }
     in.col_idx.resize(g.col_idx.size());
 
-    std::vector<int> pos(in.row_ptr.begin(), in.row_ptr.end());
+    vector<int> pos(in.row_ptr.begin(), in.row_ptr.end());
     for (int src = 0; src < n; src++) {
         for (int j = g.row_ptr[src]; j < g.row_ptr[src + 1]; j++) {
             int dst = g.col_idx[j];
@@ -98,14 +94,12 @@ inline CSRGraph buildInCSR(const CSRGraph& g) {
 }
 
 
-// ============================================================
 // Broadcast CSR graph from process 0 to all MPI processes
-// ============================================================
 inline void broadcastGraph(CSRGraph& graph, int mpi_rank) {
 
-    // --------------------------------------------------------
+    
     // Broadcast number of nodes
-    // --------------------------------------------------------
+    
     MPI_Bcast(
         &graph.n,
         1,
@@ -118,9 +112,9 @@ inline void broadcastGraph(CSRGraph& graph, int mpi_rank) {
     int col_idx_size;
     int out_degree_size;
 
-    // --------------------------------------------------------
+    
     // Process 0 provides vector sizes
-    // --------------------------------------------------------
+    
     if (mpi_rank == 0) {
 
         row_ptr_size =
@@ -133,9 +127,9 @@ inline void broadcastGraph(CSRGraph& graph, int mpi_rank) {
             static_cast<int>(graph.out_degree.size());
     }
 
-    // --------------------------------------------------------
+    
     // Broadcast vector sizes
-    // --------------------------------------------------------
+    
     MPI_Bcast(
         &row_ptr_size,
         1,
@@ -160,9 +154,9 @@ inline void broadcastGraph(CSRGraph& graph, int mpi_rank) {
         MPI_COMM_WORLD
     );
 
-    // --------------------------------------------------------
+    
     // Allocate memory on non-root processes
-    // --------------------------------------------------------
+    
     if (mpi_rank != 0) {
 
         graph.row_ptr.resize(row_ptr_size);
@@ -172,9 +166,9 @@ inline void broadcastGraph(CSRGraph& graph, int mpi_rank) {
         graph.out_degree.resize(out_degree_size);
     }
 
-    // --------------------------------------------------------
+    
     // Broadcast CSR arrays
-    // --------------------------------------------------------
+    
     MPI_Bcast(
         graph.row_ptr.data(),
         row_ptr_size,

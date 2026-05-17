@@ -3,7 +3,7 @@
  * Parallelizes rank updates across threads using OpenMP.
  *
  * Compile with:
- * g++ -O2 -fopenmp -o pagerank_omp pagerank_omp.cpp
+  g++ -O2 -fopenmp -I"$env:MSMPI_INC" -L"$env:MSMPI_LIB64" -lmsmpi -o bin/pagerank_omp src/SharedMemory.cpp
  */
 
 #include <iostream>
@@ -16,9 +16,7 @@
 
 using namespace std;
 
-// ============================================================
 // CONFIGURATION
-// ============================================================
 const int NUM_THREADS = 4;
 
 /*
@@ -35,10 +33,7 @@ const int NUM_THREADS = 4;
  *     Used for dangling node accumulation
  *     Used for convergence difference accumulation
  */
-vector<double> pageRankOMP(
-    const CSRGraph& g,
-    double* elapsed_ms_out
-) {
+vector<double> pageRankOMP(const CSRGraph& g) {
 
     int n = g.n;
 
@@ -50,16 +45,9 @@ vector<double> pageRankOMP(
     vector<double> rank(n, 1.0 / n);
     vector<double> new_rank(n, 0.0);
 
-    // --------------------------------------------------------
-    // Start timing (measure iterative computation only)
-    // --------------------------------------------------------
-    double start = omp_get_wtime();
-
     for (int iter = 0; iter < MAX_ITERATIONS; iter++) {
 
-        // ----------------------------------------------------
         // Compute dangling-node contribution
-        // ----------------------------------------------------
         double dangling_sum = 0.0;
 
         #pragma omp parallel for reduction(+:dangling_sum) schedule(static)
@@ -74,9 +62,7 @@ vector<double> pageRankOMP(
             (1.0 - DAMPING) / n +
             DAMPING * dangling_sum / n;
 
-        // ----------------------------------------------------
         // Parallel rank update
-        // ----------------------------------------------------
         #pragma omp parallel for schedule(dynamic, 64)
         for (int i = 0; i < n; i++) {
 
@@ -94,9 +80,7 @@ vector<double> pageRankOMP(
             new_rank[i] = base + DAMPING * contrib;
         }
 
-        // ----------------------------------------------------
         // Convergence check
-        // ----------------------------------------------------
         double diff = 0.0;
 
         #pragma omp parallel for reduction(+:diff) schedule(static)
@@ -124,26 +108,13 @@ vector<double> pageRankOMP(
         }
     }
 
-    // --------------------------------------------------------
-    // End timing
-    // --------------------------------------------------------
-    double end = omp_get_wtime();
-
-    if (elapsed_ms_out) {
-        *elapsed_ms_out =
-            (end - start) * 1000.0;
-    }
-
     return rank;
 }
 
 int main() {
 
-    // --------------------------------------------------------
     // Load graph from edge list
-    // --------------------------------------------------------
-    string graph_file =
-        "data/predefined_graph_edges.txt";
+    string graph_file = GRAPH_FILE;
 
     cout << "Loading graph from: "
          << graph_file
@@ -152,7 +123,6 @@ int main() {
     CSRGraph graph =
         loadGraphFromEdgeList(graph_file);
 
-    // --------------------------------------------------------
 
     cout << "=== OpenMP PageRank ===\n";
 
@@ -162,26 +132,15 @@ int main() {
          << ", Max Iters: " << MAX_ITERATIONS
          << "\n\n";
 
-    double elapsed_ms = 0.0;
+    double t_start = omp_get_wtime();
 
     vector<double> ranks =
-        pageRankOMP(graph, &elapsed_ms);
+        pageRankOMP(graph);
 
-    // --------------------------------------------------------
-    // Optional: Print final ranks
-    // --------------------------------------------------------
-    /*
-    cout << "\nFinal PageRank scores:\n";
+    double t_end = omp_get_wtime();
 
-    for (int i = 0; i < graph.n; i++) {
+    double elapsed_ms = (t_end - t_start) * 1000.0;
 
-        cout << "Node "
-             << i
-             << ": "
-             << ranks[i]
-             << "\n";
-    }
-    */
 
     double sum =
         accumulate(ranks.begin(), ranks.end(), 0.0);

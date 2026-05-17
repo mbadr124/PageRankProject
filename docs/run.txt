@@ -1,0 +1,10 @@
+cmd /c "chcp 65001>nul & C:\msys64\ucrt64\bin\g++.exe -O2 -DNDEBUG -fdiagnostics-color=always C:\Users\MohammedBadr\Desktop\HPC\Project\pagerank-project\src\MessagePassing.cpp -I C:\MPI\SDK\Include\ -L C:\MPI\SDK\Lib\x64\ -lmsmpi -o C:\Users\MohammedBadr\Desktop\HPC\Project\pagerank-project\bin\pagerank_mpi.exe" 
+&   g++ -O2 -I"$env:MSMPI_INC" -L"$env:MSMPI_LIB64" -lmsmpi -o bin/pagerank_seq src/Sequential.cpp
+&   g++ -O2 -fopenmp -I"$env:MSMPI_INC" -L"$env:MSMPI_LIB64" -lmsmpi -o bin/pagerank_omp src/SharedMemory.cpp
+
+
+mpiexec -n 4 .\bin\pagerank_mpi.exe
+
+./bin/pagerank_omp.exe
+
+./bin/pagerank_seq.exe

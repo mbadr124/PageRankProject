@@ -3,10 +3,9 @@
  * Distributes nodes across MPI processes using block partitioning.
  *
  * Compile with:
- * mpicxx -O2 -o pagerank_mpi pagerank_mpi.cpp
- *
- * Run with:
- * mpirun -np 4 ./pagerank_mpi
+cmd /c "chcp 65001>nul & C:\msys64\ucrt64\bin\g++.exe -O2 -DNDEBUG -fdiagnostics-color=always C:\Users\MohammedBadr\Desktop\HPC\Project\pagerank-project\src\MessagePassing.cpp -I C:\MPI\SDK\Include\ -L C:\MPI\SDK\Lib\x64\ -lmsmpi -o C:\Users\MohammedBadr\Desktop\HPC\Project\pagerank-project\bin\pagerank_mpi.exe" 
+* Run with:
+ *   mpiexec -n 4 .\bin\pagerank_mpi.exe
  */
 
 #include <iostream>
@@ -21,29 +20,25 @@ using namespace std;
 
 /*
  * pageRankMPI
- * Runs distributed PageRank using MPI point-to-point communication.
+ * Runs distributed PageRank using MPI collective communication.
  *
  * Distribution strategy:
  * - Nodes are partitioned into contiguous blocks.
  * - Each process updates only its assigned nodes.
- * - Partial rank vectors are gathered on root.
- * - Root broadcasts the updated global vector.
+ * - Updated partial rank vectors are combined with MPI_Allgatherv.
  * - Global convergence uses MPI_Allreduce.
  */
 vector<double> pageRankMPI(
     const CSRGraph& g,
     int mpi_rank,
-    int mpi_size,
-    double* elapsed_ms_out
+    int mpi_size
 ) {
 
     int n = g.n;
 
     CSRGraph in = buildInCSR(g);
 
-    // --------------------------------------------------------
     // Block partitioning
-    // --------------------------------------------------------
     int block = n / mpi_size;
 
     int local_start = mpi_rank * block;
@@ -58,18 +53,25 @@ vector<double> pageRankMPI(
     vector<double> rank(n, 1.0 / n);
     vector<double> new_rank(n, 0.0);
 
-    // --------------------------------------------------------
-    // Start timing
-    // --------------------------------------------------------
-    MPI_Barrier(MPI_COMM_WORLD);
+    vector<int> counts(mpi_size, 0);
+    vector<int> displs(mpi_size, 0);
 
-    double start = MPI_Wtime();
+    for (int p = 0; p < mpi_size; p++) {
+
+        int p_start = p * block;
+
+        int p_end =
+            (p == mpi_size - 1)
+            ? n
+            : p_start + block;
+
+        counts[p] = p_end - p_start;
+        displs[p] = p_start;
+    }
 
     for (int iter = 0; iter < MAX_ITERATIONS; iter++) {
 
-        // ----------------------------------------------------
         // Dangling-node contribution
-        // ----------------------------------------------------
         double local_dangling = 0.0;
 
         for (int i = local_start; i < local_end; i++) {
@@ -94,9 +96,7 @@ vector<double> pageRankMPI(
             (1.0 - DAMPING) / n +
             DAMPING * dangling_sum / n;
 
-        // ----------------------------------------------------
         // Local rank update
-        // ----------------------------------------------------
         for (int i = local_start; i < local_end; i++) {
 
             double contrib = 0.0;
@@ -113,61 +113,19 @@ vector<double> pageRankMPI(
             new_rank[i] = base + DAMPING * contrib;
         }
 
-        // ----------------------------------------------------
-        // Gather updated ranks on root
-        // ----------------------------------------------------
-        if (mpi_rank == 0) {
-
-            // Root already owns its own block
-
-            for (int p = 1; p < mpi_size; p++) {
-
-                int p_start = p * block;
-
-                int p_end =
-                    (p == mpi_size - 1)
-                    ? n
-                    : p_start + block;
-
-                int p_n = p_end - p_start;
-
-                MPI_Recv(
-                    new_rank.data() + p_start,
-                    p_n,
-                    MPI_DOUBLE,
-                    p,
-                    0,
-                    MPI_COMM_WORLD,
-                    MPI_STATUS_IGNORE
-                );
-            }
-
-        } else {
-
-            MPI_Send(
-                new_rank.data() + local_start,
-                local_n,
-                MPI_DOUBLE,
-                0,
-                0,
-                MPI_COMM_WORLD
-            );
-        }
-
-        // ----------------------------------------------------
-        // Broadcast full updated vector
-        // ----------------------------------------------------
-        MPI_Bcast(
-            new_rank.data(),
-            n,
+        // Exchange updated ranks across all processes
+        MPI_Allgatherv(
+            new_rank.data() + local_start,
+            local_n,
             MPI_DOUBLE,
-            0,
+            new_rank.data(),
+            counts.data(),
+            displs.data(),
+            MPI_DOUBLE,
             MPI_COMM_WORLD
         );
 
-        // ----------------------------------------------------
         // Convergence check
-        // ----------------------------------------------------
         double local_diff = 0.0;
 
         for (int i = local_start; i < local_end; i++) {
@@ -213,19 +171,6 @@ vector<double> pageRankMPI(
         }
     }
 
-    // --------------------------------------------------------
-    // End timing
-    // --------------------------------------------------------
-    MPI_Barrier(MPI_COMM_WORLD);
-
-    double end = MPI_Wtime();
-
-    if (elapsed_ms_out && mpi_rank == 0) {
-
-        *elapsed_ms_out =
-            (end - start) * 1000.0;
-    }
-
     return rank;
 }
 
@@ -239,13 +184,10 @@ int main(int argc, char** argv) {
     MPI_Comm_rank(MPI_COMM_WORLD, &mpi_rank);
     MPI_Comm_size(MPI_COMM_WORLD, &mpi_size);
 
-    // --------------------------------------------------------
     // Load graph
-    // --------------------------------------------------------
     CSRGraph graph;
 
-    string graph_file =
-        "data/predefined_graph_edges.txt";
+    string graph_file = GRAPH_FILE;
 
     if (mpi_rank == 0) {
 
@@ -257,10 +199,11 @@ int main(int argc, char** argv) {
             loadGraphFromEdgeList(graph_file);
     }
 
+    MPI_Barrier(MPI_COMM_WORLD);
+    double t_start = MPI_Wtime();
+
     // Broadcast graph to all processes
     broadcastGraph(graph, mpi_rank);
-
-    // --------------------------------------------------------
 
     if (mpi_rank == 0) {
 
@@ -273,31 +216,17 @@ int main(int argc, char** argv) {
              << "\n\n";
     }
 
-    double elapsed_ms = 0.0;
-
     vector<double> ranks =
         pageRankMPI(
             graph,
             mpi_rank,
-            mpi_size,
-            &elapsed_ms
+            mpi_size
         );
 
-    /*
-    if (mpi_rank == 0) {
+    MPI_Barrier(MPI_COMM_WORLD);
+    double t_end = MPI_Wtime();
+    double elapsed_ms = (t_end - t_start) * 1000.0;
 
-        cout << "\nFinal PageRank scores:\n";
-
-        for (int i = 0; i < graph.n; i++) {
-
-            cout << "Node "
-                 << i
-                 << ": "
-                 << ranks[i]
-                 << "\n";
-        }
-    }
-    */
 
     if (mpi_rank == 0) {
 

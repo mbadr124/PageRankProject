@@ -1,3 +1,14 @@
+/*
+ * Sequential PageRank implementation in C++.
+ *
+ * This version computes PageRank scores in a single thread, iterating until convergence or a maximum number of iterations.
+ *
+ * Compile with:
+  g++ -O2 -I"$env:MSMPI_INC" -L"$env:MSMPI_LIB64" -lmsmpi -o bin/pagerank_seq src/Sequential.cpp
+ *
+ * Note: Ensure you have the graph data file at "data/predefined_graph_edges.txt" for testing.
+ */
+
 #include <iostream>
 #include <cmath>
 #include <numeric>
@@ -6,14 +17,11 @@
 
 using namespace std;
 
-vector<double> pageRank(const CSRGraph& g, double* elapsed_ms_out) {
+vector<double> pageRank(const CSRGraph& g) {
     int n = g.n;
     CSRGraph in = buildInCSR(g);
     vector<double> rank(n, 1.0 / n);
     vector<double> new_rank(n, 0.0);
-
-    struct timespec start, end;
-    clock_gettime(CLOCK_MONOTONIC, &start);
 
     for (int iter = 0; iter < MAX_ITERATIONS; iter++) {
         // Handle dangling nodes (nodes with no outgoing edges)
@@ -46,17 +54,14 @@ vector<double> pageRank(const CSRGraph& g, double* elapsed_ms_out) {
         }
     }
 
-    clock_gettime(CLOCK_MONOTONIC, &end);
-    if (elapsed_ms_out) {
-        *elapsed_ms_out = (end.tv_sec - start.tv_sec) * 1000.0 +
-                          (end.tv_nsec - start.tv_nsec) / 1e6;
-    }
     return rank;
 }
 
 int main() {
-    string graph_file = "data/predefined_graph_edges.txt";
+    string graph_file = GRAPH_FILE;
+
     cout << "Loading graph from: " << graph_file << "\n";
+
     // Use a predefined graph from data/.
     CSRGraph graph = loadGraphFromEdgeList(graph_file);
 
@@ -64,8 +69,13 @@ int main() {
     cout << "Nodes: " << graph.n << ", Damping: " << DAMPING
               << ", Max Iters: " << MAX_ITERATIONS << "\n\n";
 
-    double elapsed_ms = 0.0;
-    vector<double> ranks = pageRank(graph, &elapsed_ms);
+    struct timespec t_start, t_end;
+    clock_gettime(CLOCK_MONOTONIC, &t_start);
+    vector<double> ranks = pageRank(graph);
+    clock_gettime(CLOCK_MONOTONIC, &t_end);
+
+    double elapsed_ms = (t_end.tv_sec - t_start.tv_sec) * 1000.0 +
+                        (t_end.tv_nsec - t_start.tv_nsec) / 1e6;
 
     /*
     

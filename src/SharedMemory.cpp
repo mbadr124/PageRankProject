@@ -33,14 +33,14 @@ const int NUM_THREADS = 4;
  *     Used for dangling node accumulation
  *     Used for convergence difference accumulation
  */
-vector<double> pageRankOMP(const CSRGraph& g) {
+vector<double> pageRankOMP(const CSRGraph& g, int num_threads) {
 
     int n = g.n;
 
     // Build incoming-edge CSR representation
     CSRGraph in = buildInCSR(g);
 
-    omp_set_num_threads(NUM_THREADS);
+    omp_set_num_threads(num_threads);
 
     vector<double> rank(n, 1.0 / n);
     vector<double> new_rank(n, 0.0);
@@ -111,7 +111,7 @@ vector<double> pageRankOMP(const CSRGraph& g) {
     return rank;
 }
 
-int main() {
+int main(int argc, char** argv) {
 
     // Load graph from edge list
     string graph_file = GRAPH_FILE;
@@ -124,10 +124,24 @@ int main() {
         loadGraphFromEdgeList(graph_file);
 
 
+    int num_threads = NUM_THREADS;
+    if (argc >= 2) {
+        try {
+            num_threads = stoi(argv[1]);
+        } catch (const exception&) {
+            cerr << "Invalid thread count: " << argv[1] << "\n";
+            return 1;
+        }
+        if (num_threads <= 0) {
+            cerr << "Thread count must be positive.\n";
+            return 1;
+        }
+    }
+
     cout << "=== OpenMP PageRank ===\n";
 
     cout << "Nodes: " << graph.n
-         << ", Threads: " << NUM_THREADS
+         << ", Threads: " << num_threads
          << ", Damping: " << DAMPING
          << ", Max Iters: " << MAX_ITERATIONS
          << "\n\n";
@@ -135,7 +149,7 @@ int main() {
     double t_start = omp_get_wtime();
 
     vector<double> ranks =
-        pageRankOMP(graph);
+        pageRankOMP(graph, num_threads);
 
     double t_end = omp_get_wtime();
 

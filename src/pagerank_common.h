@@ -14,7 +14,7 @@ using namespace std;
 constexpr int MAX_ITERATIONS = 50000;  // Maximum number of iterations
 constexpr double CONVERGENCE = 1e-6;   // Convergence threshold
 constexpr double DAMPING = 0.85;       // Damping factor
-constexpr const char* GRAPH_FILE = "data/graph_2k_edges.txt";
+constexpr const char* GRAPH_FILE = "data/graph_300k_edges.txt";
 
 // CSR Graph Structure
 struct CSRGraph {

@@ -5,6 +5,6 @@ cmd /c "chcp 65001>nul & C:\msys64\ucrt64\bin\g++.exe -O2 -DNDEBUG -fdiagnostics
 
 mpiexec -n 4 .\bin\pagerank_mpi.exe
 
-./bin/pagerank_omp.exe
+./bin/pagerank_omp.exe 4
 
 ./bin/pagerank_seq.exe
